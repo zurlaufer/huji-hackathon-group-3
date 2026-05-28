@@ -31,8 +31,8 @@ public class BanController : ControllerBase
     {
         var result = _engine.Analyze(session);
 
-        // If rule engine is uncertain (0.15-0.60), consult ML model
-        if (result.AiProbabilityScore >= 0.15 && result.AiProbabilityScore < 0.60)
+        // If rule engine is uncertain (0.05-0.60), consult ML model
+        if (result.AiProbabilityScore >= 0.05 && result.AiProbabilityScore < 0.60)
         {
             var mlResult = await _mlClient.PredictAsync(session);
             if (mlResult != null && mlResult.Confidence >= 0.80)

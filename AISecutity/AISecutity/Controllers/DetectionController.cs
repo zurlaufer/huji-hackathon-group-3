@@ -31,7 +31,7 @@ public class DetectionController : ControllerBase
         var result = _engine.Analyze(session);
 
         // If rule engine is uncertain, ask the ML model
-        if (result.AiProbabilityScore >= 0.30 && result.AiProbabilityScore < 0.60)
+        if (result.AiProbabilityScore >= 0.05 && result.AiProbabilityScore < 0.60)
         {
             var mlResult = await _mlClient.PredictAsync(session);
             if (mlResult != null)

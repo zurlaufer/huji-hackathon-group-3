@@ -26,9 +26,9 @@ namespace AISecutity.Detection;
 public class AiDetectionEngine : IAiDetectionEngine
 {
     // Tiered thresholds — separate "monitor", "challenge", and "block" levels
-    private const double MonitorThreshold = 0.40;   // Log it, watch closely
-    private const double ChallengeThreshold = 0.60; // Show CAPTCHA
-    private const double BlockThreshold = 0.75;     // Hard block
+    private const double MonitorThreshold = 0.25;   // Log it, watch closely
+    private const double ChallengeThreshold = 0.40; // Show CAPTCHA
+    private const double BlockThreshold = 0.55;     // Hard block
 
     // Threshold adjustments based on user history
     private const double FirstVisitBonus = 0.10;    // First-timers get +0.10 threshold (more lenient)
@@ -72,6 +72,7 @@ public class AiDetectionEngine : IAiDetectionEngine
         signals.Add(AnalyzeNavigationPattern(events));
         signals.Add(AnalyzeNavigationBehavior(events));
         signals.Add(AnalyzeScrollBehavior(events));        // NEW v3.2: reading focal point
+        signals.Add(AnalyzeHumanProof(events));            // NEW v4: catches Camoufox
         signals.Add(AnalyzeApiTargeting(events));
         signals.Add(AnalyzeSessionRhythm(events));
 
@@ -80,18 +81,18 @@ public class AiDetectionEngine : IAiDetectionEngine
         double weightedScore = signals.Sum(s => s.Score * s.Weight) / totalWeight;
 
         // Hybrid boost: multiple strong signals firing together
-        int strongSignals = signals.Count(s => s.Score >= 0.6);
+        int strongSignals = signals.Count(s => s.Score >= 0.55);  // 0.55 threshold catches Camoufox
         double maxSignal = signals.Max(s => s.Score);
         double secondMaxSignal = signals.OrderByDescending(s => s.Score).Skip(1).First().Score;
 
         double combinedScore = weightedScore;
         if (strongSignals >= 3)
-            combinedScore = Math.Max(combinedScore, 0.75);
-        else if (strongSignals >= 2 && secondMaxSignal >= 0.6)
-            combinedScore = Math.Max(combinedScore, 0.60);
+            combinedScore = Math.Max(combinedScore + 0.20, 0.65);
+        else if (strongSignals >= 2 && secondMaxSignal >= 0.55)   // Lowered from 0.6 to catch Camoufox
+            combinedScore = Math.Max(combinedScore + 0.15, 0.55);
 
         if (maxSignal >= 0.9)
-            combinedScore = Math.Max(combinedScore, weightedScore + 0.1);
+            combinedScore += 0.05;
 
         combinedScore = Math.Min(1.0, combinedScore);
 
@@ -1005,6 +1006,78 @@ public class AiDetectionEngine : IAiDetectionEngine
             Weight = 0.08,
             Score = Math.Round(score, 4),
             Description = $"Analyzed {scrollEvents.Count} scroll events. Deltas: {deltas.Count}, Intervals: {scrollIntervals.Count}."
+        };
+    }
+
+    /// <summary>
+    /// <summary>
+    /// NEW v4: Human Proof — catches Camoufox and similar perfect-evasion bots.
+    /// 
+    /// Real humans ALWAYS leave "proof of humanity" in their sessions:
+    /// - They type something (search, form, comment)
+    /// - They revisit pages (back button, re-reading)
+    /// - They have idle gaps (distracted, thinking)
+    /// - They scroll up (re-reading something)
+    /// - They have typing errors
+    /// 
+    /// Camoufox-style bots avoid all detection signals but they also avoid
+    /// leaving human proof. Zero proof in 10+ events = suspicious.
+    /// </summary>
+    private DetectionSignal AnalyzeHumanProof(List<ActivityEvent> events)
+    {
+        if (events.Count < 8)
+            return new DetectionSignal { SignalName = "HumanProof", Weight = 0.12, Score = 0.5, Description = "Too few events." };
+
+        int proofPoints = 0;
+
+        // 1. Has keyboard events
+        if (events.Any(e => e.Keyboard != null)) proofPoints += 2;
+
+        // 2. Has revisits (same page appears again non-consecutively)
+        var endpoints = events.Select(e => e.Endpoint).Where(e => !string.IsNullOrEmpty(e)).ToList();
+        var seen = new HashSet<string>();
+        for (int i = 0; i < endpoints.Count; i++)
+        {
+            if (seen.Contains(endpoints[i]) && (i == 0 || endpoints[i] != endpoints[i-1]))
+            { proofPoints += 2; break; }
+            seen.Add(endpoints[i]);
+        }
+
+        // 3. Has idle gap > 8s
+        for (int i = 1; i < events.Count; i++)
+        {
+            if ((events[i].Timestamp - events[i-1].Timestamp).TotalMilliseconds > 8000)
+            { proofPoints += 1; break; }
+        }
+
+        // 4. Has scroll up (mouse Y decreases during scroll)
+        var scrolls = events.Where(e => e.EventType == "scroll" && e.Mouse != null).ToList();
+        for (int i = 1; i < scrolls.Count; i++)
+        {
+            if (scrolls[i].Mouse!.Y < scrolls[i-1].Mouse!.Y - 20)
+            { proofPoints += 1; break; }
+        }
+
+        // 5. Has typing errors
+        if (events.Any(e => e.Keyboard?.ErrorRate > 0.02)) proofPoints += 2;
+
+        // Score: 0 proof = very suspicious, 6+ = definitely human
+        double score = proofPoints switch
+        {
+            0 => 0.90,
+            1 => 0.75,
+            2 => 0.55,
+            3 => 0.35,
+            4 => 0.20,
+            _ => 0.05,
+        };
+
+        return new DetectionSignal
+        {
+            SignalName = "HumanProof",
+            Weight = 0.12,
+            Score = Math.Round(score, 4),
+            Description = $"Human proof points: {proofPoints}/8. {(proofPoints == 0 ? "No typing, no revisits, no idle gaps." : "")}"
         };
     }
 

@@ -29,6 +29,9 @@ builder.Services.AddAiBlocking(options =>
     {
         "/api/detection",
         "/api/ban",
+        "/api/sdk",
+        "/sdk",
+        "/api/fingerprint",
         "/health",
         "/swagger",
         "/openapi"
@@ -40,7 +43,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowDemoSite", policy =>
     {
-        policy.WithOrigins("http://localhost:4200")
+        policy.WithOrigins("http://localhost:4200", "http://localhost:8080")
               .AllowAnyHeader()
               .AllowAnyMethod();
     });

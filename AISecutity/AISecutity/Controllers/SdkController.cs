@@ -167,6 +167,85 @@ public class SdkController : ControllerBase
             },
         });
     }
+
+    /// <summary>
+    /// Reset all sessions for an API key (clear dashboard).
+    /// DELETE api/sdk/reset?apiKey=xxx
+    /// </summary>
+    [HttpDelete("reset")]
+    public ActionResult Reset([FromQuery] string apiKey)
+    {
+        if (string.IsNullOrEmpty(apiKey))
+            return BadRequest("API key required");
+
+        int removed;
+        lock (_lock)
+        {
+            var toRemove = _sessions.Where(kv => kv.Value.ApiKey == apiKey).Select(kv => kv.Key).ToList();
+            removed = toRemove.Count;
+            foreach (var key in toRemove)
+                _sessions.Remove(key);
+        }
+
+        return Ok(new { message = $"Cleared {removed} sessions for {apiKey}" });
+    }
+
+    /// <summary>
+    /// Get detailed info about a specific session (signals, events, etc.)
+    /// GET api/sdk/session/{sessionId}?apiKey=xxx
+    /// </summary>
+    [HttpGet("session/{sessionId}")]
+    public ActionResult GetSession(string sessionId, [FromQuery] string apiKey)
+    {
+        CustomerSession? session;
+        lock (_lock)
+        {
+            _sessions.TryGetValue(sessionId, out session);
+        }
+
+        if (session == null || session.ApiKey != apiKey)
+            return NotFound(new { error = "Session not found" });
+
+        // Run detection to get full signal breakdown
+        var activitySession = new ActivitySession
+        {
+            SessionId = session.SessionId,
+            UserId = session.ApiKey,
+            UserAgent = session.UserAgent,
+            IpAddress = "unknown",
+            Events = session.Events,
+        };
+
+        var result = session.Events.Count >= 2 ? _engine.Analyze(activitySession) : null;
+
+        return Ok(new
+        {
+            session.SessionId,
+            session.UserAgent,
+            session.Url,
+            session.StartedAt,
+            session.LastSeenAt,
+            session.IsBot,
+            session.LastScore,
+            session.LastAction,
+            eventCount = session.Events.Count,
+            duration = (session.LastSeenAt - session.StartedAt).TotalSeconds,
+            signals = result?.Signals.Select(s => new { s.SignalName, s.Score, s.Description }),
+            events = session.Events.Take(50).Select(e => new
+            {
+                e.Timestamp,
+                e.EventType,
+                e.Endpoint,
+                e.DurationMs,
+                mouseSpeed = e.Mouse?.Speed,
+                mouseX = e.Mouse?.X,
+                mouseY = e.Mouse?.Y,
+                hasCurve = e.Mouse?.HasCurve,
+                keyDelay = e.Keyboard?.InterKeyDelayMs,
+                keyErrors = e.Keyboard?.ErrorRate,
+            }),
+        });
+    }
 }
 
 public class SdkPayload

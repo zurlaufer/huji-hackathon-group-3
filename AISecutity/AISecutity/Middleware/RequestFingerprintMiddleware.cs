@@ -33,6 +33,14 @@ public class RequestFingerprintMiddleware
     public async Task InvokeAsync(HttpContext context)
     {
         var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var path = context.Request.Path.Value ?? "";
+
+        // Skip fingerprinting for SDK and dashboard endpoints (they're API calls from JS)
+        if (path.StartsWith("/api/sdk") || path.StartsWith("/sdk/") || path.StartsWith("/api/fingerprint"))
+        {
+            await _next(context);
+            return;
+        }
 
         // Fingerprint the request
         var fingerprint = _analyzer.Analyze(context);

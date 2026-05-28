@@ -1,0 +1,35 @@
+{
+  "products": [
+    {
+      "name": "Running Shoes Pro",
+      "price": "$89.99"
+    },
+    {
+      "name": "Wireless Headphones",
+      "price": "$149.99"
+    },
+    {
+      "name": "Smart Watch X",
+      "price": "$299.99"
+    },
+    {
+      "name": "Laptop Stand",
+      "price": "$49.99"
+    },
+    {
+      "name": "Phone Case Ultra",
+      "price": "$29.99"
+    },
+    {
+      "name": "Travel Backpack",
+      "price": "$79.99"
+    }
+  ],
+  "posts": [
+    "Top 10 Running Shoes for 2026",
+    "How to Choose the Right Headphones",
+    "Smart Watch Buying Guide"
+  ],
+  "detected": true,
+  "score": 0.75
+}
